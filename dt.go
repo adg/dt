@@ -192,26 +192,86 @@ func gitLog(rev string) ([]string, error) {
 }
 
 func visDiff(a, b []byte) error {
-	cs := diff.Bytes(a, b)
-	cs = diff.Granular(2, cs) // avoid one-byte chunks
+	d := lineDiff(a, b)
+
+	// Less handles tabs weirdly.
+	d = bytes.Replace(d, []byte("\t"), []byte("        "), -1)
+
+	cmd := exec.Command("less", "-r")
+	cmd.Stdin = bytes.NewReader(d)
+	cmd.Stdout = os.Stdout
+	return cmd.Run()
+}
+
+// lineDiff returns b with all lines added or changed from a highlighted.
+// It discards spaces within lines when comparing lines, so subtle
+// gofmt-induced alignment changes are not flagged as changes.
+// It also handles single-line diffs specially, highlighting only the
+// changes within those lines.
+func lineDiff(a, b []byte) []byte {
+	l := byteLines{bytes.Split(a, []byte("\n")), bytes.Split(b, []byte("\n"))}
+	cs := diff.Diff(len(l.a), len(l.b), diff.Data(l))
 
 	var buf bytes.Buffer
 	n := 0
 	for _, c := range cs {
+		for _, b := range l.b[n:c.B] {
+			buf.Write(b)
+			buf.WriteByte('\n')
+		}
+		if c.Ins > 0 {
+			if c.Ins == 1 && c.Del == 1 {
+				buf.Write(byteDiff(l.a[c.A], l.b[c.B]))
+				buf.WriteByte('\n')
+			} else {
+				for _, b := range l.b[c.B : c.B+c.Ins] {
+					buf.Write(colorize(b))
+					buf.WriteByte('\n')
+				}
+			}
+		}
+		n = c.B + c.Ins
+	}
+	for i, b := range l.b[n:] {
+		if i > 0 {
+			buf.WriteByte('\n')
+		}
+		buf.Write(b)
+	}
+	return buf.Bytes()
+}
+
+type byteLines struct {
+	a, b [][]byte
+}
+
+var bSpace, bNone = []byte(" "), []byte{}
+
+func (l byteLines) Equal(i, j int) bool {
+	return bytes.Equal(
+		bytes.Replace(l.a[i], bSpace, bNone, -1),
+		bytes.Replace(l.b[j], bSpace, bNone, -1),
+	)
+}
+
+func byteDiff(a, b []byte) []byte {
+	var buf bytes.Buffer
+	n := 0
+	for _, c := range diff.Granular(1, diff.Bytes(a, b)) {
 		buf.Write(b[n:c.B])
 		if c.Ins > 0 {
-			buf.WriteString("\x1b[1;92m")
-			buf.Write(b[c.B : c.B+c.Ins])
-			buf.WriteString("\x1b[0m")
+			buf.Write(colorize(b[c.B : c.B+c.Ins]))
 		}
 		n = c.B + c.Ins
 	}
 	buf.Write(b[n:])
+	return buf.Bytes()
+}
 
-	input := bytes.Replace(buf.Bytes(), []byte("\t"), []byte("        "), -1)
-
-	cmd := exec.Command("less", "-r")
-	cmd.Stdin = bytes.NewReader(input)
-	cmd.Stdout = os.Stdout
-	return cmd.Run()
+func colorize(b []byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("\x1b[1;92m")
+	buf.Write(b)
+	buf.WriteString("\x1b[0m")
+	return buf.Bytes()
 }
