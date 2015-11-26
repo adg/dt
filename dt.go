@@ -32,9 +32,11 @@ func main() {
 	hashes, err := gitLog(head)
 	check(err)
 
-	// TODO: check tree isn't dirty
+	defer gitCheckout(head)
 
-	for n := 0; n < len(hashes); {
+	// TODO: check tree isn't dirty
+	n := 0
+	for {
 		hash := hashes[n]
 
 		msg, err := gitMessage(hash)
@@ -58,7 +60,13 @@ func main() {
 		sort.Strings(changed)
 
 		// TODO: support more than 9 changed files
-		opts := "qnpr"
+		opts := "qr"
+		if n > 0 {
+			opts += "p"
+		}
+		if n < len(hashes)-1 {
+			opts += "n"
+		}
 		prompt := bytes.NewBuffer([]byte("\x1b[2J\x1b[;H"))
 		fmt.Fprintf(prompt, "%v\n\n", msg)
 		if len(changed) > 0 {
@@ -73,9 +81,12 @@ func main() {
 
 		switch c := readChoice(prompt.String(), opts); c {
 		case "q":
-			os.Exit(0)
+			return
 		case "n":
 			n++
+			if n >= len(hashes) {
+				n = len(hashes) - 1
+			}
 		case "p":
 			n--
 			if n < 0 {
