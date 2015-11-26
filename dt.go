@@ -28,13 +28,16 @@ func main() {
 		os.Exit(2)
 	}
 	head := os.Args[1]
-
 	hashes, err := gitLog(head)
 	check(err)
 
+	if !gitClean() {
+		fmt.Fprintf(os.Stderr, "git tree isn't clean; run git status and resolve\n")
+		os.Exit(1)
+	}
+
 	defer gitCheckout(head)
 
-	// TODO: check tree isn't dirty
 	n := 0
 	for {
 		hash := hashes[n]
@@ -103,6 +106,11 @@ func main() {
 			check(visDiff(pfiles[name], files[name]))
 		}
 	}
+}
+
+func gitClean() bool {
+	out, err := exec.Command("git", "status", "-s").CombinedOutput()
+	return err == nil && len(out) == 0
 }
 
 func goRun() error {
