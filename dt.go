@@ -3,6 +3,9 @@
 // changes made by each commit.
 package main
 
+// TODO: support more than 9 changed files
+// TODO: support directories
+
 import (
 	"bytes"
 	"fmt"
@@ -13,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/mb0/diff"
-	"github.com/mgutz/ansi"
 )
 
 func check(err error) {
@@ -62,7 +64,6 @@ func main() {
 		}
 		sort.Strings(changed)
 
-		// TODO: support more than 9 changed files
 		opts := "qr"
 		if n > 0 {
 			opts += "p"
@@ -70,7 +71,7 @@ func main() {
 		if n < len(hashes)-1 {
 			opts += "n"
 		}
-		prompt := bytes.NewBuffer([]byte("\x1b[2J\x1b[;H"))
+		prompt := bytes.NewBufferString("\x1b[2J\x1b[;H")
 		fmt.Fprintf(prompt, "%v\n\n", msg)
 		if len(changed) > 0 {
 			fmt.Fprintf(prompt, "Changed files:\n")
@@ -157,7 +158,6 @@ func gitLs(rev string) (map[string][]byte, error) {
 	}
 	files := make(map[string][]byte)
 	for _, s := range strings.Split(string(out), "\n") {
-		// TODO: support directories
 		p := strings.Fields(s)
 		if len(p) != 4 {
 			continue
@@ -193,26 +193,25 @@ func gitLog(rev string) ([]string, error) {
 
 func visDiff(a, b []byte) error {
 	cs := diff.Bytes(a, b)
-	cs = diff.Granular(10, cs)
-
-	hl := []byte(ansi.ColorCode("green+bh"))
-	rst := []byte(ansi.ColorCode("reset"))
+	cs = diff.Granular(2, cs) // avoid one-byte chunks
 
 	var buf bytes.Buffer
 	n := 0
 	for _, c := range cs {
 		buf.Write(b[n:c.B])
 		if c.Ins > 0 {
-			buf.Write(hl)
+			buf.WriteString("\x1b[1;92m")
 			buf.Write(b[c.B : c.B+c.Ins])
-			buf.Write(rst)
+			buf.WriteString("\x1b[0m")
 		}
 		n = c.B + c.Ins
 	}
 	buf.Write(b[n:])
 
+	input := bytes.Replace(buf.Bytes(), []byte("\t"), []byte("        "), -1)
+
 	cmd := exec.Command("less", "-r")
-	cmd.Stdin = &buf
+	cmd.Stdin = bytes.NewReader(input)
 	cmd.Stdout = os.Stdout
 	return cmd.Run()
 }
