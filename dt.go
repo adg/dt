@@ -44,6 +44,8 @@ func main() {
 	for {
 		hash := hashes[n]
 
+		check(gitCheckout(hash))
+
 		msg, err := gitMessage(hash)
 		check(err)
 
@@ -97,7 +99,6 @@ func main() {
 				n = 0
 			}
 		case "r":
-			check(gitCheckout(hash))
 			check(goRun())
 		default:
 			i, err := strconv.ParseInt(c, 10, 32)
