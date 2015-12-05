@@ -44,6 +44,7 @@ func main() {
 	for {
 		hash := hashes[n]
 
+		check(gitRevert())
 		check(gitCheckout(hash))
 
 		msg, err := gitMessage(hash)
@@ -108,6 +109,29 @@ func main() {
 			check(visDiff(pfiles[name], files[name]))
 		}
 	}
+}
+
+func gitRevert() error {
+	out, err := exec.Command("git", "status", "-s").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gitRevert status: %v\n%s", err, out)
+	}
+	var fs []string
+	for _, s := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(s)
+		if len(f) == 2 && f[0] == "M" {
+			fs = append(fs, f[1])
+		}
+	}
+	if len(fs) == 0 {
+		return nil
+	}
+	args := append([]string{"checkout", "--"}, fs...)
+	out, err = exec.Command("git", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gitRevert checkout: %v\n%s", err, out)
+	}
+	return nil
 }
 
 func gitClean() bool {
